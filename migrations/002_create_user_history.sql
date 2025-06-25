@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS user_history (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    query TEXT NOT NULL,
+    response TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
