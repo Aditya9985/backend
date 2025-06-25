@@ -3,12 +3,29 @@ import dotenv from "dotenv";
 import express from "express";
 import pkg from "pg";
 
+// Load environment variables
 dotenv.config();
+
 const { Pool } = pkg;
+
+// Log the DATABASE_URL to verify it's loaded (remove in production)
+console.log('Database URL configured:', process.env.DATABASE_URL ? 'Yes' : 'No');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: {
+    rejectUnauthorized: false,
+    require: true
+  }
+});
+
+// Test database connection
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    console.error('Database connection error:', err);
+  } else {
+    console.log('Database connected successfully');
+  }
 });
 
 const app = express();
@@ -25,9 +42,10 @@ app.use(express.json());
 // Health check endpoint
 app.get("/api/ping", async (req, res) => {
   try {
-    const result = await pool.query("SELECT NOW() as now");
-    res.json({ ok: true, now: result.rows[0].now });
+    await pool.query('SELECT NOW()');
+    res.json({ ok: true, time: new Date().toISOString() });
   } catch (err) {
+    console.error('Health check failed:', err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
