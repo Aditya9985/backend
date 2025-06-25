@@ -1,21 +1,41 @@
-const { Pool } = require('pg');
+import pg from 'pg';
+const { Pool } = pg;
 
-async function main() {
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-  });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
 
+async function checkDatabase() {
+  const client = await pool.connect();
   try {
-    console.log('Checking aiOutput table...');
-    const result = await pool.query('SELECT * FROM "aiOutput" WHERE "createdBy" = $1', ['mahaprasad.behera27@gmail.com']);
-    console.log('Found records:', result.rows.length);
-    console.log('Data:', JSON.stringify(result.rows, null, 2));
+    console.log('Connected to database successfully');
+    
+    // Try to query the aiOutput table
+    const result = await client.query('SELECT COUNT(*) FROM "aiOutput"');
+    console.log('Total records in aiOutput:', result.rows[0].count);
+    
+    // Try to query for the specific email
+    const email = 'mahaprasad.behera27@gmail.com';
+    const userResult = await client.query('SELECT COUNT(*) FROM "aiOutput" WHERE "createdBy" = $1', [email]);
+    console.log(`Records for email ${email}:`, userResult.rows[0].count);
+    
+    // Show sample data
+    const sampleResult = await client.query('SELECT id, "createdBy", "createdAt", "formData" FROM "aiOutput" WHERE "createdBy" = $1 LIMIT 1', [email]);
+    if (sampleResult.rows.length > 0) {
+      console.log('Sample record:', JSON.stringify(sampleResult.rows[0], null, 2));
+    } else {
+      console.log('No records found for this email');
+    }
+    
   } catch (err) {
-    console.error('Error:', err);
+    console.error('Database check failed:', err);
   } finally {
-    await pool.end();
+    client.release();
+    pool.end();
   }
 }
 
-main();
+checkDatabase().catch(console.error);

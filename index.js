@@ -107,10 +107,13 @@ app.get("/api/test-db", async (req, res) => {
 app.get("/api/history/:email", async (req, res) => {
   const client = await pool.connect();
   try {
+    console.log('Request params:', req.params);
     const email = decodeURIComponent(req.params.email);
+    console.log('Decoded email:', email);
     
     // Validate email
     if (!email || !email.includes('@')) {
+      console.log('Invalid email format');
       return res.status(400).json({ 
         error: 'Invalid email format' 
       });
@@ -131,27 +134,34 @@ app.get("/api/history/:email", async (req, res) => {
       ORDER BY id DESC
     `;
 
+    console.log('Executing query...');
     const result = await client.query(query, [email]);
     console.log(`Found ${result.rows.length} history items`);
+    console.log('Raw data:', JSON.stringify(result.rows, null, 2));
     
     // Transform data to match frontend expectations
-    const transformedData = result.rows.map(row => {
+    const transformedData = result.rows.map((row, index) => {
+      console.log(`Processing row ${index}:`, JSON.stringify(row, null, 2));
       let formData;
       try {
         // Handle different formData formats
         if (typeof row.formData === 'string') {
           try {
             formData = JSON.parse(row.formData);
-          } catch {
+            console.log('Parsed formData:', formData);
+          } catch (e) {
+            console.log('Failed to parse formData string:', e.message);
             formData = { text: row.formData };
           }
         } else if (typeof row.formData === 'object') {
           formData = row.formData;
+          console.log('Using object formData:', formData);
         } else {
+          console.log('Using fallback formData');
           formData = { text: String(row.formData) };
         }
 
-        return {
+        const transformedRow = {
           id: row.id,
           formData: formData,
           aiResponse: row.aiResponse || '',
@@ -162,10 +172,13 @@ app.get("/api/history/:email", async (req, res) => {
           query: formData.input || formData.prompt || JSON.stringify(formData),
           response: row.aiResponse || ''
         };
+        console.log('Transformed row:', JSON.stringify(transformedRow, null, 2));
+        return transformedRow;
       } catch (e) {
-        console.error('Error transforming row:', e, row);
+        console.error('Error transforming row:', e.message);
+        console.error('Problematic row:', JSON.stringify(row, null, 2));
         // Return a safe version of the row if transformation fails
-        return {
+        const safeRow = {
           id: row.id,
           formData: { error: 'Data format error' },
           aiResponse: row.aiResponse || '',
@@ -175,18 +188,24 @@ app.get("/api/history/:email", async (req, res) => {
           query: 'Error: Could not parse query',
           response: row.aiResponse || ''
         };
+        console.log('Using safe row:', JSON.stringify(safeRow, null, 2));
+        return safeRow;
       }
     });
 
+    console.log('Sending response with transformed data');
     return res.json(transformedData);
 
   } catch (error) {
     console.error('Error in /api/history/:email:', error);
+    console.error('Stack trace:', error.stack);
     return res.status(500).json({ 
       error: 'Failed to fetch history',
-      details: error.message
+      details: error.message,
+      stack: error.stack
     });
   } finally {
+    console.log('Releasing database connection');
     client.release();
   }
 });
