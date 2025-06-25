@@ -210,6 +210,64 @@ app.get("/api/history/:email", async (req, res) => {
   }
 });
 
+// Test endpoint for history
+app.get("/api/history-test/:email", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const email = decodeURIComponent(req.params.email);
+    console.log('Test endpoint: fetching history for email:', email);
+
+    const result = await client.query(`
+      SELECT 
+        id,
+        "formData"::text,
+        "aiResponse"::text,
+        "templateSlug",
+        "createdBy",
+        "createdAt"
+      FROM "aiOutput" 
+      WHERE "createdBy" = $1 
+      ORDER BY id DESC
+    `, [email]);
+
+    console.log('Raw results:', JSON.stringify(result.rows, null, 2));
+
+    const transformedData = result.rows.map(row => {
+      let formData;
+      try {
+        formData = JSON.parse(row.formData || '{}');
+      } catch (e) {
+        console.error('Error parsing formData:', e);
+        formData = { error: 'Invalid format' };
+      }
+
+      return {
+        id: row.id,
+        formData,
+        aiResponse: row.aiResponse || '',
+        templateSlug: row.templateSlug || '',
+        createdBy: row.createdBy,
+        createdAt: row.createdAt,
+        query: formData.input || formData.prompt || formData.niche || JSON.stringify(formData),
+        response: row.aiResponse || ''
+      };
+    });
+
+    console.log('Transformed data:', JSON.stringify(transformedData, null, 2));
+    return res.json(transformedData);
+
+  } catch (error) {
+    console.error('Error in test endpoint:', error);
+    return res.status(500).json({ 
+      error: 'Failed to fetch history',
+      details: error.message,
+      stack: error.stack
+    });
+  } finally {
+    client.release();
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
