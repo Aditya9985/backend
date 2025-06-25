@@ -24,16 +24,6 @@ pool.on('error', (err) => {
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Add error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Global error handler:', err);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-  });
-});
-
 // Middleware
 app.use(cors({
   origin: '*',
@@ -66,25 +56,8 @@ app.get("/api/history/:email", async (req, res) => {
   const client = await pool.connect();
   try {
     const email = decodeURIComponent(req.params.email);
-    console.log('Processing request for email:', email);
+    console.log('Fetching history for email:', email);
 
-    // Begin transaction
-    await client.query('BEGIN');
-
-    // Check if the table exists
-    const tableCheck = await client.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'aiOutput'
-      );
-    `);
-
-    if (!tableCheck.rows[0].exists) {
-      throw new Error('aiOutput table does not exist');
-    }
-
-    // Get the actual data
     const query = `
       SELECT 
         id,
@@ -95,105 +68,48 @@ app.get("/api/history/:email", async (req, res) => {
         "createdAt"
       FROM "aiOutput" 
       WHERE "createdBy" = $1 
-      ORDER BY "createdAt" DESC
+      ORDER BY id DESC
     `;
-
-    console.log('Executing query:', query);
-    console.log('With parameters:', [email]);
 
     const result = await client.query(query, [email]);
     
-    // Log the results
-    console.log('Query completed. Found rows:', result.rows.length);
-    
-    // Commit transaction
-    await client.query('COMMIT');
+    // Transform data to match frontend expectations
+    const transformedData = result.rows.map(row => {
+      let formData;
+      try {
+        formData = JSON.parse(row.formData);
+      } catch (e) {
+        formData = { text: row.formData };
+      }
 
-    return res.json(result.rows);
-
-  } catch (error) {
-    // Rollback transaction on error
-    await client.query('ROLLBACK');
-    
-    console.error('Detailed error in /api/history/:email:', {
-      error: error.message,
-      stack: error.stack,
-      email: req.params.email,
-      query: error.query,
-      parameters: error.parameters
+      return {
+        id: row.id,
+        formData: formData,
+        aiResponse: row.aiResponse || '',
+        templateSlug: row.templateSlug,
+        createdBy: row.createdBy,
+        createdAt: row.createdAt,
+        // Add these fields to match frontend expectations
+        query: formData.input || formData.prompt || JSON.stringify(formData),
+        response: row.aiResponse || ''
+      };
     });
 
-    return res.status(500).json({
+    console.log(`Found ${result.rows.length} history items`);
+    return res.json(transformedData);
+
+  } catch (error) {
+    console.error('Error in /api/history/:email:', error);
+    return res.status(500).json({ 
       error: 'Failed to fetch history',
-      details: error.message,
-      email: req.params.email
-    });
-  } finally {
-    // Release the client back to the pool
-    client.release();
-  }
-});
-
-// Test database endpoint
-app.get("/api/test-db", async (req, res) => {
-  const client = await pool.connect();
-  try {
-    // Test basic query
-    const result1 = await client.query('SELECT NOW()');
-    
-    // Test aiOutput table
-    const result2 = await client.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'aiOutput'
-      );
-    `);
-    
-    // Get table structure
-    const result3 = await client.query(`
-      SELECT column_name, data_type 
-      FROM information_schema.columns 
-      WHERE table_name = 'aiOutput';
-    `);
-    
-    // Get row count
-    const result4 = await client.query(`
-      SELECT COUNT(*) FROM "aiOutput";
-    `);
-    
-    res.json({
-      database: 'connected',
-      currentTime: result1.rows[0].now,
-      tableExists: result2.rows[0].exists,
-      tableStructure: result3.rows,
-      totalRows: result4.rows[0].count
-    });
-  } catch (error) {
-    console.error('Database test failed:', error);
-    res.status(500).json({
-      error: 'Database test failed',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: error.message
     });
   } finally {
     client.release();
   }
 });
 
-// Start server with error handling
-const server = app.listen(PORT, () => {
+// Start server
+app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-});
-
-server.on('error', (error) => {
-  console.error('Server error:', error);
-});
-
-process.on('unhandledRejection', (error) => {
-  console.error('Unhandled rejection:', error);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught exception:', error);
 });
