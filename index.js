@@ -97,34 +97,50 @@ app.get("/api/history", async (req, res) => {
 // Get user history
 app.get("/api/history/:userId", async (req, res) => {
   try {
+    console.log('Fetching history for user:', req.params.userId);
     const { userId } = req.params;
+    
     const query = `
       SELECT * FROM user_history 
       WHERE user_id = $1 
       ORDER BY created_at DESC
     `;
+    
     const result = await pool.query(query, [userId]);
+    console.log(`Found ${result.rows.length} history items`);
+    
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching history:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error('Error in /api/history/:userId:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch history',
+      details: error.message 
+    });
   }
 });
 
 // Create history entry
 app.post("/api/history", async (req, res) => {
   try {
+    console.log('Creating history entry:', req.body);
     const { userId, query, response } = req.body;
+    
     const sqlQuery = `
       INSERT INTO user_history (user_id, query, response)
       VALUES ($1, $2, $3)
       RETURNING *
     `;
+    
     const result = await pool.query(sqlQuery, [userId, query, response]);
+    console.log('History entry created:', result.rows[0]);
+    
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error("Error creating history entry:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error('Error in POST /api/history:', error);
+    res.status(500).json({ 
+      error: 'Failed to create history entry',
+      details: error.message 
+    });
   }
 });
 
