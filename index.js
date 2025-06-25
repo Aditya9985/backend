@@ -29,7 +29,7 @@ pool.query('SELECT NOW()', (err, res) => {
 });
 
 const app = express();
-const PORT = process.env.PORT || 8080; // Updated port for Railway
+const PORT = process.env.PORT || 8080;
 
 // Middleware
 app.use(cors({
@@ -50,95 +50,27 @@ app.get("/api/ping", async (req, res) => {
   }
 });
 
-// History endpoint
-app.get("/api/history", async (req, res) => {
+// Get user history by email
+app.get("/api/history/:email", async (req, res) => {
   try {
-    const { email } = req.query;
-    console.log('Received request for email:', email);
-
-    if (!email || typeof email !== 'string') {
-      console.log('Email is missing or invalid');
-      return res.status(400).json({ error: 'Email is required' });
-    }
-
-    // Debug: log the exact email string
-    console.log('Querying for email:', `>${email}<`);
-
-    console.log('Checking database connection...');
-    try {
-      await pool.query('SELECT 1');
-      console.log('Database connection is working');
-    } catch (err) {
-      console.error('Database connection test failed:', err);
-      return res.status(500).json({ error: 'Database connection failed' });
-    }
-
-    console.log('Executing query with email:', email);
-    try {
-      // Query the aiOutput table
-      const result = await pool.query(
-        'SELECT id, "formData", "aiResponse", "templateSlug", "createdBy", "createdAt" FROM "aiOutput" WHERE "createdBy" = $1 ORDER BY "createdAt" DESC',
-        [email]
-      );
-      // Debug: log the result
-      console.log('Query result:', result.rows);
-      return res.json(result.rows);
-    } catch (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Database query failed: ' + err.message });
-    }
-  } catch (error) {
-    console.error('Error fetching history:', error);
-    res.status(500).json({ error: 'Failed to fetch history' });
-    return;
-  }
-});
-
-// Get user history
-app.get("/api/history/:userId", async (req, res) => {
-  try {
-    console.log('Fetching history for user:', req.params.userId);
-    const { userId } = req.params;
+    console.log('Fetching history for email:', req.params.email);
+    const email = req.params.email;
     
     const query = `
-      SELECT * FROM user_history 
-      WHERE user_id = $1 
-      ORDER BY created_at DESC
+      SELECT id, "formData", "aiResponse", "templateSlug", "createdBy", "createdAt"
+      FROM "aiOutput" 
+      WHERE "createdBy" = $1 
+      ORDER BY "createdAt" DESC
     `;
     
-    const result = await pool.query(query, [userId]);
-    console.log(`Found ${result.rows.length} history items`);
+    const result = await pool.query(query, [email]);
+    console.log(`Found ${result.rows.length} history items for email: ${email}`);
     
     res.json(result.rows);
   } catch (error) {
-    console.error('Error in /api/history/:userId:', error);
+    console.error('Error in /api/history/:email:', error);
     res.status(500).json({ 
       error: 'Failed to fetch history',
-      details: error.message 
-    });
-  }
-});
-
-// Create history entry
-app.post("/api/history", async (req, res) => {
-  try {
-    console.log('Creating history entry:', req.body);
-    const { userId, query, response } = req.body;
-    
-    const sqlQuery = `
-      INSERT INTO user_history (user_id, query, response)
-      VALUES ($1, $2, $3)
-      RETURNING *
-    `;
-    
-    const result = await pool.query(sqlQuery, [userId, query, response]);
-    console.log('History entry created:', result.rows[0]);
-    
-    res.status(201).json(result.rows[0]);
-  } catch (error) {
-    console.error('Error in POST /api/history:', error);
-    res.status(500).json({ 
-      error: 'Failed to create history entry',
       details: error.message 
     });
   }
