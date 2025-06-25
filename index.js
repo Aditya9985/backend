@@ -53,25 +53,63 @@ app.get("/api/ping", async (req, res) => {
 // Get user history by email
 app.get("/api/history/:email", async (req, res) => {
   try {
-    console.log('Fetching history for email:', req.params.email);
-    const email = req.params.email;
-    
+    // Decode the email from URL
+    const email = decodeURIComponent(req.params.email);
+    console.log('Attempting to fetch history for email:', email);
+
+    // First verify if the table exists
+    try {
+      const tableCheck = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'aiOutput'
+        );
+      `);
+      console.log('Table check result:', tableCheck.rows[0]);
+    } catch (err) {
+      console.error('Error checking table:', err);
+    }
+
+    // Then try to get a count of records
+    try {
+      const countQuery = await pool.query(`
+        SELECT COUNT(*) FROM "aiOutput" 
+        WHERE "createdBy" = $1
+      `, [email]);
+      console.log('Found records:', countQuery.rows[0].count);
+    } catch (err) {
+      console.error('Error counting records:', err);
+    }
+
+    // Now fetch the actual records
     const query = `
-      SELECT id, "formData", "aiResponse", "templateSlug", "createdBy", "createdAt"
+      SELECT 
+        id,
+        "formData",
+        "aiResponse",
+        "templateSlug",
+        "createdBy",
+        "createdAt"
       FROM "aiOutput" 
       WHERE "createdBy" = $1 
       ORDER BY "createdAt" DESC
     `;
     
     const result = await pool.query(query, [email]);
-    console.log(`Found ${result.rows.length} history items for email: ${email}`);
+    console.log(`Successfully found ${result.rows.length} history items for email: ${email}`);
     
-    res.json(result.rows);
+    return res.json(result.rows);
   } catch (error) {
-    console.error('Error in /api/history/:email:', error);
-    res.status(500).json({ 
+    console.error('Detailed error in /api/history/:email:', {
+      error: error.message,
+      stack: error.stack,
+      email: req.params.email
+    });
+    
+    return res.status(500).json({ 
       error: 'Failed to fetch history',
-      details: error.message 
+      details: error.message,
+      email: req.params.email 
     });
   }
 });
